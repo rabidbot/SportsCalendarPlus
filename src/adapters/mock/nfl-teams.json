@@ -1,0 +1,44 @@
+{
+  "sports": [
+    {
+      "leagues": [
+        {
+          "teams": [
+            {
+              "team": {
+                "id": "9",
+                "displayName": "Green Bay Packers",
+                "abbreviation": "GB",
+                "logos": [{ "href": "https://a.espncdn.com/i/teamlogos/nfl/500/gb.png" }]
+              }
+            },
+            {
+              "team": {
+                "id": "3",
+                "displayName": "Chicago Bears",
+                "abbreviation": "CHI",
+                "logos": [{ "href": "https://a.espncdn.com/i/teamlogos/nfl/500/chi.png" }]
+              }
+            },
+            {
+              "team": {
+                "id": "6",
+                "displayName": "Dallas Cowboys",
+                "abbreviation": "DAL",
+                "logos": [{ "href": "https://a.espncdn.com/i/teamlogos/nfl/500/dal.png" }]
+              }
+            },
+            {
+              "team": {
+                "id": "21",
+                "displayName": "Philadelphia Eagles",
+                "abbreviation": "PHI",
+                "logos": [{ "href": "https://a.espncdn.com/i/teamlogos/nfl/500/phi.png" }]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

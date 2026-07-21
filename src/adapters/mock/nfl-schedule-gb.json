@@ -1,0 +1,56 @@
+{
+  "events": [
+    {
+      "id": "401547417",
+      "date": "2026-09-13T17:00:00Z",
+      "name": "Chicago Bears at Green Bay Packers",
+      "shortName": "CHI @ GB",
+      "competitions": [
+        {
+          "competitors": [
+            {
+              "homeAway": "home",
+              "team": { "id": "9", "displayName": "Green Bay Packers", "abbreviation": "GB" },
+              "records": [{ "type": "total", "summary": "0-0" }]
+            },
+            {
+              "homeAway": "away",
+              "team": { "id": "3", "displayName": "Chicago Bears", "abbreviation": "CHI" },
+              "records": [{ "type": "total", "summary": "0-0" }]
+            }
+          ],
+          "broadcasts": [{ "names": ["FOX"] }],
+          "venue": { "fullName": "Lambeau Field" },
+          "status": { "type": { "name": "STATUS_SCHEDULED", "state": "pre", "completed": false } }
+        }
+      ],
+      "status": { "type": { "name": "STATUS_SCHEDULED", "state": "pre", "completed": false } }
+    },
+    {
+      "id": "401547500",
+      "date": "2026-09-20T20:25:00Z",
+      "name": "Green Bay Packers at Minnesota Vikings",
+      "shortName": "GB @ MIN",
+      "competitions": [
+        {
+          "competitors": [
+            {
+              "homeAway": "away",
+              "team": { "id": "9", "displayName": "Green Bay Packers", "abbreviation": "GB" },
+              "records": [{ "type": "total", "summary": "1-0" }]
+            },
+            {
+              "homeAway": "home",
+              "team": { "id": "16", "displayName": "Minnesota Vikings", "abbreviation": "MIN" },
+              "records": [{ "type": "total", "summary": "0-1" }]
+            }
+          ],
+          "broadcasts": [{ "names": ["CBS"] }],
+          "venue": { "fullName": "U.S. Bank Stadium" },
+          "status": { "type": { "name": "STATUS_SCHEDULED", "state": "pre", "completed": false } }
+        }
+      ],
+      "status": { "type": { "name": "STATUS_SCHEDULED", "state": "pre", "completed": false } }
+    }
+  ]
+}
