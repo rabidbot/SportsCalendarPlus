@@ -4,6 +4,8 @@ export type EventStatus = 'scheduled' | 'provisional' | 'in_progress' | 'final'
 
 export type ScoringMode = 'personal' | 'neutral'
 
+export type CalendarViewMode = 'month' | 'week'
+
 export interface TrackedEntity {
   id: string
   sport: Sport
@@ -45,8 +47,19 @@ export interface CalendarEvent {
   watchability?: number
   mustSee?: boolean
   reasons?: string[]
+  headline?: string
+  breakdown?: ScoreBreakdown
   rivalryTier?: 0 | 1 | 2
   stakesScore?: number
+}
+
+export interface ScoreBreakdown {
+  rivalry: number
+  stakes: number
+  quality: number
+  marquee: number
+  scarcity: number
+  favorite: number
 }
 
 export interface ScoringWeights {
@@ -58,12 +71,22 @@ export interface ScoringWeights {
   favorite: number
 }
 
+export interface NotificationSettings {
+  enabled: boolean
+  mustSee: boolean
+  favorites: boolean
+  pickOfDay: boolean
+  minutesBefore: number
+}
+
 export interface AppSettings {
   timezone: string
   weights: ScoringWeights
   mode: ScoringMode
   crowdedDayThreshold: number
   mustSeeThreshold: number
+  viewMode: CalendarViewMode
+  notifications: NotificationSettings
 }
 
 export interface StandingEntry {
@@ -97,6 +120,8 @@ export interface DayBundle {
   date: string
   events: CalendarEvent[]
   pickOfDay?: CalendarEvent
+  runnerUp?: CalendarEvent
+  pickRationale?: string[]
   isCrowded: boolean
   conflictBlocks: ConflictBlock[]
   ranked: CalendarEvent[]
@@ -112,6 +137,8 @@ export interface ConflictBlock {
 export interface ScoreResult {
   score: number
   reasons: string[]
+  headline: string
+  breakdown: ScoreBreakdown
   mustSee: boolean
   rivalryTier: 0 | 1 | 2
   stakesScore: number

@@ -9,10 +9,23 @@ import {
 import { applyScores } from '../scoring/score'
 import { dedupeEvents, groupByLocalDate } from '../calendar/grouping'
 
+function eventMatchesEntity(event: CalendarEvent, entity: TrackedEntity): boolean {
+  if (entity.sport === 'f1' || entity.sourceId === 'f1') {
+    return event.sport === 'f1'
+  }
+  if (event.sport !== entity.sport) return false
+  const sid = entity.sourceId
+  return (
+    event.home?.entitySourceId === sid ||
+    event.away?.entitySourceId === sid
+  )
+}
+
 export function useCalendarData(
   entities: TrackedEntity[],
   settings: AppSettings,
   favorites: Set<string>,
+  filterEntityId: string | null = null,
 ) {
   const entityKey = entities.map((e) => e.id).sort().join(',')
 
@@ -71,13 +84,21 @@ export function useCalendarData(
     settings.mustSeeThreshold,
   ])
 
+  const filteredEvents = useMemo(() => {
+    if (!filterEntityId) return scoredEvents
+    const entity = entities.find((e) => e.id === filterEntityId)
+    if (!entity) return scoredEvents
+    return scoredEvents.filter((e) => eventMatchesEntity(e, entity))
+  }, [scoredEvents, filterEntityId, entities])
+
   const dayMap = useMemo(
-    () => groupByLocalDate(scoredEvents, settings.crowdedDayThreshold),
-    [scoredEvents, settings.crowdedDayThreshold],
+    () => groupByLocalDate(filteredEvents, settings.crowdedDayThreshold),
+    [filteredEvents, settings.crowdedDayThreshold],
   )
 
   return {
-    events: scoredEvents,
+    events: filteredEvents,
+    allEvents: scoredEvents,
     dayMap,
     isLoading: schedulesQuery.isLoading || standingsQuery.isLoading,
     isFetching: schedulesQuery.isFetching || standingsQuery.isFetching,

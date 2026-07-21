@@ -2,16 +2,18 @@
 
 Local-first multi-sport calendar for NFL, NBA, MLB, NHL, soccer, and Formula 1.
 
-Pick up to **10 teams/entities**, merge their known fixtures into one month calendar, score every game for watchability, and get a **pick of the day** plus ranked watch order on crowded days.
+Pick up to **10 teams**, merge known fixtures into one calendar, score every game, and get a **pick of the day** with a plain-English explanation of why it ranked first.
+
+**Live:** https://rabidbot.github.io/SportsCalendarPlus/
 
 ## Stack
 
 - Vite + React + TypeScript
 - TanStack Query
 - date-fns / date-fns-tz
-- Plain CSS (custom month grid)
+- Plain CSS (custom month + week grids)
 
-No backend, no login. Selections and scoring weights persist in `localStorage`.
+No backend, no login. Selections, weights, and alert prefs persist in `localStorage`.
 
 ## Quick start
 
@@ -24,6 +26,17 @@ npm run dev
 npm test
 npm run build
 ```
+
+## Deploy (GitHub Pages)
+
+Pushes to `master` build and deploy via GitHub Actions (`.github/workflows/deploy.yml`).
+
+One-time setup in the repo:
+
+1. **Settings → Pages → Build and deployment → Source: GitHub Actions**
+2. Push to `master` (or run the workflow manually)
+
+Site URL: `https://<user>.github.io/SportsCalendarPlus/`
 
 ## Data sources
 
@@ -42,7 +55,7 @@ In development, Vite proxies:
 | `/api/espn-v2/*` | `https://site.api.espn.com/*` (NHL standings quirk) |
 | `/api/jolpica/*` | `https://api.jolpi.ca/*` |
 
-Production builds call the hosts directly. If a browser blocks CORS in production, serve the app behind the same proxy pattern or a tiny static host rewrite.
+Production builds call the hosts directly. Soccer schedules use `fixture=true` plus season fallbacks because ESPN often defaults to an empty next season.
 
 Optional mock mode (NFL sample only):
 
@@ -52,9 +65,10 @@ VITE_USE_MOCK=true npm run dev
 
 ## Features
 
-- Team picker grouped by sport (soccer league selector; F1 as one slot)
-- Month grid color-coded by sport, must-see badges, pick-of-day crown
-- Day panel: ranked list, score reasons, broadcasts, conflict blocks
+- Team picker (soccer league selector; F1 as one slot) + **focus filter**
+- **Month** and **week** views, Today jump, upcoming rail
+- Day panel: ranked list, score bars, “why this over the rest”, conflicts
+- Browser **game alerts** (must-see / favorites / pick-of-day) while the tab is open
 - Scoring weights, Personal/Neutral mode, timezone, crowded-day threshold
 - Provisional/TBD fixtures rendered distinctly and deprioritized
 
@@ -69,7 +83,9 @@ Weighted 0–100 rubric (`src/scoring/`):
 - Scarcity (openers, finales, classic F1 circuits)
 - Favorite (personal mode only)
 
-Unit tests live in `src/scoring/score.test.ts`.
+Each event gets a **headline**, **component breakdown**, and comparative rationale vs the runner-up.
+
+Unit tests: `src/scoring/score.test.ts`.
 
 ## Project layout
 
@@ -79,7 +95,8 @@ src/
   scoring/      pure watchability engine
   calendar/     day grouping, conflicts, pick-of-day
   state/        localStorage-backed settings + entities
-  components/   Picker, MonthGrid, DayPanel, Settings
+  components/   Picker, MonthGrid, WeekView, DayPanel, Settings
+  hooks/        calendar data + game alerts
   lib/          time + sport constants
 ```
 
@@ -88,4 +105,5 @@ src/
 - ESPN payloads are undocumented and vary by sport; parsing is isolated in `adapters/espn.ts`.
 - NHL standings use the `apis/v2` path.
 - Jolpica is volunteer-run — F1 calendar is cached aggressively via TanStack Query.
+- Alerts use the browser Notification API (no push server); keep the tab open for timed reminders.
 - “Currently known” schedules may be incomplete mid-season; playoff opponents are often TBD.

@@ -1,5 +1,7 @@
-import type { AppSettings, ScoringWeights } from '../types'
+import { useState } from 'react'
+import type { AppSettings, NotificationSettings, ScoringWeights } from '../types'
 import { DEFAULT_WEIGHTS } from '../scoring/weights'
+import { requestNotificationPermission } from '../hooks/useGameAlerts'
 
 interface Props {
   settings: AppSettings
@@ -43,6 +45,29 @@ export function SettingsPanel({
   lastRefreshed,
   onClose,
 }: Props) {
+  const [permNote, setPermNote] = useState('')
+
+  function patchNotifications(patch: Partial<NotificationSettings>) {
+    onChange({
+      notifications: { ...settings.notifications, ...patch },
+    })
+  }
+
+  async function enableAlerts() {
+    const perm = await requestNotificationPermission()
+    if (perm === 'unsupported') {
+      setPermNote('Notifications are not supported in this browser.')
+      return
+    }
+    if (perm === 'denied') {
+      setPermNote('Permission blocked — enable notifications in browser settings.')
+      patchNotifications({ enabled: false })
+      return
+    }
+    patchNotifications({ enabled: true })
+    setPermNote('Alerts on — keep this tab open for timed reminders.')
+  }
+
   return (
     <div className="drawer">
       <div className="drawer-header">
@@ -68,6 +93,26 @@ export function SettingsPanel({
       </label>
 
       <label className="field">
+        <span>Calendar view</span>
+        <div className="segmented">
+          <button
+            type="button"
+            className={settings.viewMode === 'month' ? 'active' : ''}
+            onClick={() => onChange({ viewMode: 'month' })}
+          >
+            Month
+          </button>
+          <button
+            type="button"
+            className={settings.viewMode === 'week' ? 'active' : ''}
+            onClick={() => onChange({ viewMode: 'week' })}
+          >
+            Week
+          </button>
+        </div>
+      </label>
+
+      <label className="field">
         <span>Scoring mode</span>
         <div className="segmented">
           <button
@@ -89,6 +134,70 @@ export function SettingsPanel({
           Personal boosts your favorite teams. Neutral ranks objectively.
         </span>
       </label>
+
+      <div className="field">
+        <span>Game alerts</span>
+        <div className="segmented">
+          <button
+            type="button"
+            className={settings.notifications.enabled ? 'active' : ''}
+            onClick={() => void enableAlerts()}
+          >
+            On
+          </button>
+          <button
+            type="button"
+            className={!settings.notifications.enabled ? 'active' : ''}
+            onClick={() => {
+              patchNotifications({ enabled: false })
+              setPermNote('')
+            }}
+          >
+            Off
+          </button>
+        </div>
+        <label className="check-row">
+          <input
+            type="checkbox"
+            checked={settings.notifications.mustSee}
+            onChange={(e) => patchNotifications({ mustSee: e.target.checked })}
+          />
+          Must-see games
+        </label>
+        <label className="check-row">
+          <input
+            type="checkbox"
+            checked={settings.notifications.favorites}
+            onChange={(e) => patchNotifications({ favorites: e.target.checked })}
+          />
+          Favorite-team games
+        </label>
+        <label className="check-row">
+          <input
+            type="checkbox"
+            checked={settings.notifications.pickOfDay}
+            onChange={(e) => patchNotifications({ pickOfDay: e.target.checked })}
+          />
+          Pick of the day
+        </label>
+        <label className="weight-row">
+          <span>Minutes before kickoff: {settings.notifications.minutesBefore}</span>
+          <input
+            type="range"
+            min={5}
+            max={120}
+            step={5}
+            value={settings.notifications.minutesBefore}
+            onChange={(e) =>
+              patchNotifications({ minutesBefore: Number(e.target.value) })
+            }
+          />
+        </label>
+        {permNote && <p className="muted tiny">{permNote}</p>}
+        <p className="muted tiny">
+          Local browser alerts while Watchlist is open — no account or push server.
+        </p>
+      </div>
 
       <label className="field">
         <span>Crowded-day threshold: {settings.crowdedDayThreshold}</span>
@@ -149,9 +258,7 @@ export function SettingsPanel({
         </button>
         <p className="muted tiny">
           Last refreshed:{' '}
-          {lastRefreshed
-            ? new Date(lastRefreshed).toLocaleString()
-            : 'not yet'}
+          {lastRefreshed ? new Date(lastRefreshed).toLocaleString() : 'not yet'}
         </p>
         <p className="muted tiny">
           Data from ESPN (unofficial) and Jolpica-F1. Schedules cache ~3h;

@@ -236,6 +236,116 @@ function parseTeamsPayload(
     .sort((a, b) => a.displayName.localeCompare(b.displayName))
 }
 
+function normalizeList(
+  events: EspnEvent[],
+  sport: Sport,
+  timezone: string,
+): CalendarEvent[] {
+  return events
+    .map((e) => normalizeEspnEvent(e, sport, timezone))
+    .filter((e): e is CalendarEvent => e != null)
+}
+
+function dedupeById(events: CalendarEvent[]): CalendarEvent[] {
+  const map = new Map<string, CalendarEvent>()
+  for (const e of events) map.set(e.id, e)
+  return [...map.values()]
+}
+
+/**
+ * Soccer seasons span calendar years. ESPN's default schedule often points at
+ * the next empty season. `fixture=true` returns the upcoming slate; season=
+ * pulls completed matchdays. Scoreboard is a last-resort fill for near dates.
+ */
+async function fetchSoccerSchedule(
+  entity: TrackedEntity,
+  timezone: string,
+): Promise<CalendarEvent[]> {
+  const league = entity.soccerLeague ?? 'usa.1'
+  const path = leaguePath('soccer', league)
+  const base = `${espnBase(path)}/teams/${entity.sourceId}/schedule`
+  const year = new Date().getUTCFullYear()
+  const collected: CalendarEvent[] = []
+
+  const tryUrls = [
+    `${base}?fixture=true`,
+    `${base}?season=${year}`,
+    `${base}?season=${year - 1}`,
+    base,
+  ]
+
+  for (const url of tryUrls) {
+    try {
+      const data = await fetchJson<EspnScheduleResponse>(url)
+      collected.push(...normalizeList(data.events ?? [], 'soccer', timezone))
+    } catch {
+      // try next
+    }
+  }
+
+  // If still thin on upcoming games, pull league scoreboard windows and filter.
+  const upcoming = collected.filter(
+    (e) => new Date(e.startUtc).getTime() >= Date.now() - 86400000,
+  )
+  if (upcoming.length < 3) {
+    try {
+      const board = await fetchSoccerScoreboardForTeam(
+        league,
+        entity.sourceId,
+        timezone,
+      )
+      collected.push(...board)
+    } catch {
+      // ignore
+    }
+  }
+
+  return dedupeById(collected)
+}
+
+function yyyymmdd(d: Date): string {
+  const y = d.getUTCFullYear()
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(d.getUTCDate()).padStart(2, '0')
+  return `${y}${m}${day}`
+}
+
+async function fetchSoccerScoreboardForTeam(
+  league: string,
+  teamSourceId: string,
+  timezone: string,
+): Promise<CalendarEvent[]> {
+  const path = leaguePath('soccer', league)
+  const now = new Date()
+  const windows: string[] = []
+  // ESPN accepts YYYYMMDD or YYYYMMDD-YYYYMMDD; chunk by ~45 days.
+  for (let i = -15; i <= 120; i += 40) {
+    const start = new Date(now)
+    start.setUTCDate(start.getUTCDate() + i)
+    const end = new Date(start)
+    end.setUTCDate(end.getUTCDate() + 39)
+    windows.push(`${yyyymmdd(start)}-${yyyymmdd(end)}`)
+  }
+
+  const out: CalendarEvent[] = []
+  for (const range of windows) {
+    try {
+      const url = `${espnBase(path)}/scoreboard?dates=${range}&limit=200`
+      const data = await fetchJson<EspnScheduleResponse>(url)
+      for (const event of data.events ?? []) {
+        const comps = event.competitions?.[0]?.competitors ?? []
+        const involves = comps.some((c) => c.team?.id === teamSourceId)
+        if (!involves) continue
+        const normalized = normalizeEspnEvent(event, 'soccer', timezone)
+        if (normalized) out.push(normalized)
+      }
+    } catch {
+      // skip window
+    }
+  }
+  return out
+}
+
 export async function fetchEspnSchedule(
   entity: TrackedEntity,
   timezone: string,
@@ -244,18 +354,17 @@ export async function fetchEspnSchedule(
 
   if (USE_MOCK && entity.sport === 'nfl' && entity.sourceId === '9') {
     const events = (nflScheduleMock as EspnScheduleResponse).events ?? []
-    return events
-      .map((e) => normalizeEspnEvent(e, 'nfl', timezone))
-      .filter((e): e is CalendarEvent => e != null)
+    return normalizeList(events, 'nfl', timezone)
+  }
+
+  if (entity.sport === 'soccer') {
+    return fetchSoccerSchedule(entity, timezone)
   }
 
   const path = leaguePath(entity.sport, entity.soccerLeague)
   const url = `${espnBase(path)}/teams/${entity.sourceId}/schedule`
   const data = await fetchJson<EspnScheduleResponse>(url)
-  const events = data.events ?? []
-  return events
-    .map((e) => normalizeEspnEvent(e, entity.sport, timezone))
-    .filter((e): e is CalendarEvent => e != null)
+  return normalizeList(data.events ?? [], entity.sport, timezone)
 }
 
 function extractEntries(

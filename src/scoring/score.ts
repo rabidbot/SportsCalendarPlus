@@ -1,4 +1,10 @@
-import type { CalendarEvent, ScoreContext, ScoreResult } from '../types'
+import type {
+  CalendarEvent,
+  ScoreBreakdown,
+  ScoreContext,
+  ScoreResult,
+  ScoringWeights,
+} from '../types'
 import { findRivalry } from './rivalries'
 import { isClassicCircuit } from './classicCircuits'
 
@@ -24,7 +30,8 @@ function scoreRivalry(
   const rivalry = findRivalry(event.sport, event.home?.name, event.away?.name)
   if (!rivalry) return { points: 0, tier: 0 }
   const points = rivalry.tier === 1 ? max : max * 0.5
-  return { points, tier: rivalry.tier, reason: rivalry.label }
+  const tag = rivalry.tier === 1 ? 'Blood rivalry' : 'Regional rivalry'
+  return { points, tier: rivalry.tier, reason: `${tag}: ${rivalry.label}` }
 }
 
 function scoreStakes(
@@ -37,32 +44,32 @@ function scoreStakes(
 
   if (event.meta?.seasonPhase === 'finals') {
     points = max
-    reasons.push('Championship / finals')
+    reasons.push('Championship / finals — maximum stakes')
     return { points, reasons }
   }
   if (event.meta?.seasonPhase === 'playoffs') {
     points = max * 0.85
-    reasons.push('Playoffs')
+    reasons.push('Playoff game — every possession matters')
     return { points, reasons }
   }
 
   if (event.sport === 'f1') {
     const progress = ctx.seasonProgress
-    const late = progress >= 0.7
-    if (late) {
+    if (progress >= 0.7) {
       points = max * (0.5 + progress * 0.5)
-      reasons.push('Late-season title implications')
+      reasons.push('Late-season title math is live')
     } else if (progress >= 0.4) {
       points = max * 0.35
-      reasons.push('Mid-season championship fight')
+      reasons.push('Championship order still fluid')
     } else {
       points = max * 0.15
+      reasons.push('Early-season; stakes still building')
     }
     return { points: clamp(points, 0, max), reasons }
   }
 
   if (!ctx.standings) {
-    reasons.push('Standings unavailable')
+    reasons.push('Standings unavailable — stakes scored neutrally')
     return { points: max * 0.25, reasons }
   }
 
@@ -79,20 +86,21 @@ function scoreStakes(
       const top = Math.min(rankHome, rankAway) <= 4
       if (gap <= 1 && top) {
         points = max * 0.9
-        reasons.push(`${rankHome}st/nd vs ${rankAway}`)
+        reasons.push(`Table clash: ${ordinal(rankHome)} vs ${ordinal(rankAway)}`)
       } else if (gap <= 3 && top) {
         points = max * 0.65
-        reasons.push('Top-table clash')
+        reasons.push('Top-table sides meeting')
       } else if (top) {
         points = max * 0.4
-        reasons.push('Top team involved')
+        reasons.push('A top team is involved')
       } else {
         points = max * 0.2
+        reasons.push('Mid/lower table — lower league impact')
       }
       points *= 0.6 + ctx.seasonProgress * 0.4
       return { points: clamp(points, 0, max), reasons }
     }
-    reasons.push('Standings unavailable')
+    reasons.push('Standings unavailable — stakes scored neutrally')
     return { points: max * 0.25, reasons }
   }
 
@@ -104,25 +112,31 @@ function scoreStakes(
 
   if (rankGap <= 1 && Math.min(home.rank, away.rank) <= 2) {
     points = max * 0.95
-    reasons.push(`${ordinal(home.rank)} vs ${ordinal(away.rank)}`)
+    reasons.push(
+      `Direct title/seed fight: ${ordinal(home.rank)} vs ${ordinal(away.rank)}`,
+    )
   } else if (bothTop && rankGap <= 3) {
     points = max * 0.75
-    reasons.push('Top-of-table matchup')
+    reasons.push(
+      `Top-six collision (${ordinal(home.rank)} vs ${ordinal(away.rank)})`,
+    )
   } else if (topMatchup) {
     points = max * 0.55
-    reasons.push('Top team involved')
+    reasons.push(`Includes a top-3 side (${ordinal(Math.min(home.rank, away.rank))})`)
   } else if (rankGap <= 2) {
     points = max * 0.45
-    reasons.push('Close in standings')
+    reasons.push('Neighbors in the standings — seeding implications')
   } else {
     points = max * 0.2
+    reasons.push('Wide standings gap — less table drama')
   }
 
   if (sameDivision) {
     points = Math.min(max, points + max * 0.1)
-    reasons.push('Division game')
+    reasons.push('Division game (extra standings weight)')
   } else if (sameConference) {
     points = Math.min(max, points + max * 0.05)
+    reasons.push('Same conference')
   }
 
   const gbHome = home.gamesBack ?? 0
@@ -130,6 +144,12 @@ function scoreStakes(
   if (Math.abs(gbHome - gbAway) <= 2 && Math.max(gbHome, gbAway) <= 5) {
     points = Math.min(max, points + max * 0.08)
     reasons.push('Tight games-back race')
+  }
+
+  if (ctx.seasonProgress >= 0.75) {
+    reasons.push('Late season amplifies every result')
+  } else if (ctx.seasonProgress <= 0.25) {
+    reasons.push('Early season — stakes scaled down')
   }
 
   points *= 0.55 + ctx.seasonProgress * 0.45
@@ -149,7 +169,7 @@ function scoreQuality(
 ): { points: number; reason?: string } {
   if (event.sport === 'f1') {
     const p = max * (0.4 + ctx.seasonProgress * 0.4)
-    return { points: p, reason: 'F1 field quality' }
+    return { points: p, reason: 'Open F1 field — quality scales with title fight' }
   }
 
   let homePct = parseWinPct(event.home)
@@ -167,15 +187,24 @@ function scoreQuality(
   }
 
   if (homePct == null || awayPct == null) {
-    return { points: max * 0.35 }
+    return { points: max * 0.35, reason: 'Team strength unknown — baseline quality' }
   }
 
   const combined = (homePct + awayPct) / 2
   const balance = 1 - Math.abs(homePct - awayPct)
   const points = max * (combined * 0.7 + balance * 0.3)
-  let reason: string | undefined
-  if (combined >= 0.6 && balance >= 0.85) reason = 'Two strong, evenly matched sides'
-  else if (combined >= 0.55) reason = 'Strong combined quality'
+  let reason: string
+  if (combined >= 0.6 && balance >= 0.85) {
+    reason = 'Two strong, evenly matched sides (best product)'
+  } else if (combined >= 0.55 && balance < 0.7) {
+    reason = 'Talent on the floor, but a likely mismatch'
+  } else if (combined >= 0.55) {
+    reason = 'Above-average combined strength'
+  } else if (balance >= 0.85) {
+    reason = 'Competitive, but neither side is elite'
+  } else {
+    reason = 'Lower combined quality / lopsided form'
+  }
   return { points: clamp(points, 0, max), reason }
 }
 
@@ -187,17 +216,18 @@ function scoreMarquee(
   let reason: string | undefined
   if (event.broadcasts.length > 0) {
     points = max * 0.7
-    reason = `National TV: ${event.broadcasts.slice(0, 2).join(', ')}`
+    reason = `National window: ${event.broadcasts.slice(0, 2).join(', ')}`
   }
   if (event.meta?.prestige || event.sport === 'f1') {
     points = Math.max(points, max * 0.85)
-    reason = event.sport === 'f1' ? 'F1 Grand Prix' : 'Prestige event'
+    reason = event.sport === 'f1' ? 'Grand Prix prestige card' : 'Prestige showcase event'
   }
   if (event.meta?.seasonPhase === 'finals') {
     points = max
-    reason = 'Championship event'
+    reason = 'Championship stage — built-in marquee'
   }
-  return { points: clamp(points, 0, max), reason }
+  if (!reason) reason = 'No national TV / prestige flag'
+  return { points: clamp(points, 0, max), reason: points > 0 ? reason : undefined }
 }
 
 function scoreScarcity(
@@ -208,18 +238,18 @@ function scoreScarcity(
     const classic = isClassicCircuit(event.meta?.circuitId)
     if (classic) return { points: max, reason: `Classic circuit: ${classic}` }
     if (event.meta?.round === 1) return { points: max * 0.7, reason: 'Season opener' }
-    return { points: max * 0.25 }
+    return { points: max * 0.25, reason: 'Regular race weekend' }
   }
 
   const title = event.title.toLowerCase()
   if (title.includes('opener') || title.includes('opening day')) {
-    return { points: max, reason: 'Season opener' }
+    return { points: max, reason: 'Season opener — once a year' }
   }
-  if (title.includes('finale') || title.includes('final')) {
+  if (title.includes('finale')) {
     return { points: max * 0.85, reason: 'Season finale' }
   }
   if (event.meta?.seasonPhase === 'playoffs' || event.meta?.seasonPhase === 'finals') {
-    return { points: max * 0.6, reason: 'Postseason scarcity' }
+    return { points: max * 0.6, reason: 'Postseason — scarce chances left' }
   }
   return { points: max * 0.15 }
 }
@@ -231,13 +261,52 @@ function scoreFavorite(
 ): { points: number; reason?: string } {
   if (ctx.mode !== 'personal') return { points: 0 }
   if (event.sport === 'f1' && ctx.favorites.has('f1')) {
-    return { points: max, reason: 'Your F1 calendar' }
+    return { points: max, reason: 'On your F1 calendar' }
   }
   const homeFav = event.home && ctx.favorites.has(event.home.entitySourceId)
   const awayFav = event.away && ctx.favorites.has(event.away.entitySourceId)
-  if (homeFav && awayFav) return { points: max, reason: 'Both sides are favorites' }
-  if (homeFav || awayFav) return { points: max * 0.85, reason: 'Features a favorite team' }
+  if (homeFav && awayFav) return { points: max, reason: 'Both clubs are your teams' }
+  if (homeFav || awayFav) {
+    const name = homeFav ? event.home?.name : event.away?.name
+    return { points: max * 0.85, reason: `Features your team${name ? `: ${name}` : ''}` }
+  }
   return { points: 0 }
+}
+
+function buildHeadline(
+  breakdown: ScoreBreakdown,
+  rivalryTier: 0 | 1 | 2,
+  reasons: string[],
+): string {
+  const parts = (Object.entries(breakdown) as [keyof ScoreBreakdown, number][])
+    .filter(([, v]) => v > 0)
+    .sort((a, b) => b[1] - a[1])
+
+  if (rivalryTier === 1) {
+    const label = reasons.find((r) => r.toLowerCase().includes('rivalry'))
+    return label
+      ? `${label.split(': ').slice(1).join(': ') || label} leads the slate`
+      : 'Tier-1 rivalry leads the slate'
+  }
+
+  const top = parts[0]
+  if (!top) return 'Baseline card — nothing special on paper'
+  const [key, pts] = top
+  const second = parts[1]
+
+  const labels: Record<keyof ScoreBreakdown, string> = {
+    rivalry: 'rivalry heat',
+    stakes: 'standings stakes',
+    quality: 'on-paper quality',
+    marquee: 'marquee billing',
+    scarcity: 'scarcity',
+    favorite: 'your teams',
+  }
+
+  if (second && pts - second[1] < 2) {
+    return `Wins on ${labels[key]} and ${labels[second[0]]}`
+  }
+  return `Primarily wins on ${labels[key]} (+${Math.round(pts)})`
 }
 
 export function score(event: CalendarEvent, ctx: ScoreContext): ScoreResult {
@@ -262,29 +331,126 @@ export function score(event: CalendarEvent, ctx: ScoreContext): ScoreResult {
   const favorite = scoreFavorite(event, ctx, w.favorite)
   if (favorite.reason) reasons.push(favorite.reason)
 
+  const breakdown: ScoreBreakdown = {
+    rivalry: round1(rivalry.points),
+    stakes: round1(stakes.points),
+    quality: round1(quality.points),
+    marquee: round1(marquee.points),
+    scarcity: round1(scarcity.points),
+    favorite: round1(favorite.points),
+  }
+
   let total =
-    rivalry.points +
-    stakes.points +
-    quality.points +
-    marquee.points +
-    scarcity.points +
-    favorite.points
+    breakdown.rivalry +
+    breakdown.stakes +
+    breakdown.quality +
+    breakdown.marquee +
+    breakdown.scarcity +
+    breakdown.favorite
 
   if (event.provisional) {
     total *= 0.85
-    reasons.push('Provisional fixture')
+    reasons.push('Provisional fixture — docked vs confirmed games')
   }
 
   const scoreValue = Math.round(clamp(total, 0, 100))
   const mustSee = rivalry.tier === 1 || scoreValue >= ctx.mustSeeThreshold
+  const headline = buildHeadline(breakdown, rivalry.tier, reasons)
 
   return {
     score: scoreValue,
     reasons,
+    headline,
+    breakdown,
     mustSee,
     rivalryTier: rivalry.tier,
     stakesScore: stakes.points,
   }
+}
+
+function round1(n: number): number {
+  return Math.round(n * 10) / 10
+}
+
+const BREAKDOWN_LABELS: Record<keyof ScoreBreakdown, string> = {
+  rivalry: 'Rivalry',
+  stakes: 'Stakes',
+  quality: 'Quality',
+  marquee: 'Marquee',
+  scarcity: 'Scarcity',
+  favorite: 'Favorite',
+}
+
+/** Explain why winner outranks runner-up using component deltas. */
+export function explainPick(
+  winner: CalendarEvent,
+  runnerUp?: CalendarEvent,
+  weights?: ScoringWeights,
+): string[] {
+  const lines: string[] = []
+  if (!winner.breakdown) {
+    if (winner.headline) lines.push(winner.headline)
+    return lines
+  }
+
+  lines.push(
+    winner.headline ??
+      `Score ${winner.watchability ?? 0}/100 on the watchability rubric`,
+  )
+
+  if (!runnerUp?.breakdown) {
+    if (winner.mustSee) lines.push('Marked must-see (tier-1 rivalry or high total).')
+    return lines
+  }
+
+  const w = winner.breakdown
+  const r = runnerUp.breakdown
+  const deltas = (Object.keys(w) as (keyof ScoreBreakdown)[])
+    .map((key) => ({
+      key,
+      delta: w[key] - r[key],
+      winnerPts: w[key],
+      runnerPts: r[key],
+    }))
+    .filter((d) => Math.abs(d.delta) >= 0.5)
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+
+  const scoreGap = (winner.watchability ?? 0) - (runnerUp.watchability ?? 0)
+  lines.push(
+    `Beats “${shortTitle(runnerUp.title)}” by ${scoreGap} pts (${winner.watchability} vs ${runnerUp.watchability}).`,
+  )
+
+  for (const d of deltas.slice(0, 3)) {
+    if (d.delta > 0) {
+      lines.push(
+        `+${fmt(d.delta)} ${BREAKDOWN_LABELS[d.key].toLowerCase()} (${fmt(d.winnerPts)} vs ${fmt(d.runnerPts)})`,
+      )
+    } else {
+      lines.push(
+        `${fmt(d.delta)} ${BREAKDOWN_LABELS[d.key].toLowerCase()} — runner-up was stronger here`,
+      )
+    }
+  }
+
+  if (winner.rivalryTier === 1 && runnerUp.rivalryTier !== 1) {
+    lines.push('Tier-1 rivalry also wins ties when totals are close.')
+  }
+  if (!winner.provisional && runnerUp.provisional) {
+    lines.push('Confirmed fixture preferred over a provisional one.')
+  }
+  if (weights && winner.breakdown.favorite > 0) {
+    lines.push('Personal mode is boosting games with your teams.')
+  }
+
+  return lines
+}
+
+function shortTitle(title: string): string {
+  return title.length > 36 ? `${title.slice(0, 34)}…` : title
+}
+
+function fmt(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(1)
 }
 
 export function applyScores(
@@ -298,8 +464,12 @@ export function applyScores(
       watchability: result.score,
       mustSee: result.mustSee,
       reasons: result.reasons,
+      headline: result.headline,
+      breakdown: result.breakdown,
       rivalryTier: result.rivalryTier,
       stakesScore: result.stakesScore,
     }
   })
 }
+
+export { BREAKDOWN_LABELS }

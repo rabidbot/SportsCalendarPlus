@@ -67,3 +67,45 @@ export function shiftMonth(
   const d = new Date(Date.UTC(year, month - 1 + delta, 1))
   return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 }
 }
+
+/** Local calendar date YYYY-MM-DD in the given timezone. */
+export function todayLocalDate(timezone: string): string {
+  return formatInTimeZone(new Date(), timezone, 'yyyy-MM-dd')
+}
+
+/** Sunday-start week containing the given local date. */
+export function startOfWeekSunday(localDate: string): string {
+  const [y, m, d] = localDate.split('-').map(Number)
+  const utc = new Date(Date.UTC(y, m - 1, d, 12, 0, 0))
+  const dow = utc.getUTCDay()
+  utc.setUTCDate(utc.getUTCDate() - dow)
+  const yy = utc.getUTCFullYear()
+  const mm = String(utc.getUTCMonth() + 1).padStart(2, '0')
+  const dd = String(utc.getUTCDate()).padStart(2, '0')
+  return `${yy}-${mm}-${dd}`
+}
+
+export function addDaysToLocalDate(localDate: string, days: number): string {
+  const [y, m, d] = localDate.split('-').map(Number)
+  const utc = new Date(Date.UTC(y, m - 1, d, 12, 0, 0))
+  utc.setUTCDate(utc.getUTCDate() + days)
+  const yy = utc.getUTCFullYear()
+  const mm = String(utc.getUTCMonth() + 1).padStart(2, '0')
+  const dd = String(utc.getUTCDate()).padStart(2, '0')
+  return `${yy}-${mm}-${dd}`
+}
+
+export function getWeekDates(weekStart: string): string[] {
+  return Array.from({ length: 7 }, (_, i) => addDaysToLocalDate(weekStart, i))
+}
+
+export function formatWeekRange(weekStart: string, timezone: string): string {
+  const end = addDaysToLocalDate(weekStart, 6)
+  const a = formatInTimeZone(parseISO(`${weekStart}T12:00:00Z`), timezone, 'MMM d')
+  const b = formatInTimeZone(parseISO(`${end}T12:00:00Z`), timezone, 'MMM d, yyyy')
+  return `${a} – ${b}`
+}
+
+export function formatShortDate(localDate: string, timezone: string): string {
+  return formatInTimeZone(parseISO(`${localDate}T12:00:00Z`), timezone, 'EEE M/d')
+}

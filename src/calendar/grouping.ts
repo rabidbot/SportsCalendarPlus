@@ -1,5 +1,6 @@
 import type { CalendarEvent, ConflictBlock, DayBundle } from '../types'
 import { eventWindowEnd, rangesOverlap } from '../lib/time'
+import { explainPick } from '../scoring/score'
 
 function compareEvents(a: CalendarEvent, b: CalendarEvent): number {
   const aProv = a.provisional ? 1 : 0
@@ -78,10 +79,14 @@ export function buildDayBundle(
   const conflicts = detectConflicts(events)
   const hasOverlap = conflicts.length > 0
   const isCrowded = events.length >= crowdedThreshold || hasOverlap
+  const pick = ranked[0]
+  const runnerUp = ranked[1]
   return {
     date,
     events,
-    pickOfDay: pickOfDay(events),
+    pickOfDay: pick,
+    runnerUp,
+    pickRationale: pick ? explainPick(pick, runnerUp) : undefined,
     isCrowded,
     conflictBlocks: conflicts,
     ranked,

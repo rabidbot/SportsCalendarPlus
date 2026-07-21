@@ -11,6 +11,14 @@ export const DEFAULT_SETTINGS: AppSettings = {
   mode: 'personal',
   crowdedDayThreshold: DEFAULT_CROWDED_THRESHOLD,
   mustSeeThreshold: DEFAULT_MUST_SEE_THRESHOLD,
+  viewMode: 'month',
+  notifications: {
+    enabled: false,
+    mustSee: true,
+    favorites: true,
+    pickOfDay: true,
+    minutesBefore: 30,
+  },
 }
 
 export function loadEntities(): TrackedEntity[] {
@@ -37,6 +45,10 @@ export function loadSettings(): AppSettings {
       ...DEFAULT_SETTINGS,
       ...parsed,
       weights: { ...DEFAULT_WEIGHTS, ...parsed.weights },
+      notifications: {
+        ...DEFAULT_SETTINGS.notifications,
+        ...parsed.notifications,
+      },
     }
   } catch {
     return { ...DEFAULT_SETTINGS, weights: { ...DEFAULT_WEIGHTS } }

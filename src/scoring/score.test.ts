@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { score } from './score'
+import { applyScores, explainPick, score } from './score'
 import { DEFAULT_WEIGHTS, DEFAULT_MUST_SEE_THRESHOLD } from './weights'
 import type { CalendarEvent, ScoreContext, StandingsMap } from '../types'
 
@@ -178,5 +178,34 @@ describe('score engine', () => {
     })
     const c = ctx({ seasonProgress: 0.4 })
     expect(score(monaco, c).score).toBeGreaterThan(score(generic, c).score)
+  })
+
+  it('returns a component breakdown and headline', () => {
+    const result = score(baseEvent(), ctx())
+    expect(result.breakdown.rivalry).toBeGreaterThan(0)
+    expect(result.headline.length).toBeGreaterThan(0)
+    expect(result.reasons.length).toBeGreaterThan(0)
+  })
+
+  it('explains why the pick beats the runner-up', () => {
+    const c = ctx({ seasonProgress: 0.6 })
+    const [clasico, mid] = applyScores(
+      [
+        baseEvent(),
+        baseEvent({
+          id: 'e2',
+          home: { entitySourceId: '1', name: 'Burnley' },
+          away: { entitySourceId: '2', name: 'Brentford' },
+          title: 'Burnley vs Brentford',
+          broadcasts: [],
+        }),
+      ],
+      c,
+    )
+    const lines = explainPick(clasico, mid)
+    expect(lines.some((l) => l.toLowerCase().includes('beats') || l.toLowerCase().includes('rivalry'))).toBe(
+      true,
+    )
+    expect(lines.length).toBeGreaterThanOrEqual(2)
   })
 })

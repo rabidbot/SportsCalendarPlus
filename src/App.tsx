@@ -1,17 +1,34 @@
 import { useMemo } from 'react'
 import { TeamPicker } from './components/TeamPicker'
 import { MonthGrid } from './components/MonthGrid'
+import { WeekView } from './components/WeekView'
 import { DayPanel } from './components/DayPanel'
 import { SettingsPanel } from './components/SettingsPanel'
+import { TeamFilter } from './components/TeamFilter'
+import { UpcomingRail } from './components/UpcomingRail'
+import { BrandMark } from './components/BrandMark'
 import { useAppState } from './state/useAppState'
 import { useCalendarData } from './hooks/useCalendarData'
+import { useGameAlerts } from './hooks/useGameAlerts'
 import { SPORT_COLORS, SPORT_LABELS } from './lib/sports'
+import {
+  addDaysToLocalDate,
+  startOfWeekSunday,
+  todayLocalDate,
+} from './lib/time'
 import type { Sport } from './types'
 import './App.css'
 
 export default function App() {
   const state = useAppState()
-  const cal = useCalendarData(state.entities, state.settings, state.favorites)
+  const cal = useCalendarData(
+    state.entities,
+    state.settings,
+    state.favorites,
+    state.filterEntityId,
+  )
+
+  useGameAlerts(cal.events, cal.dayMap, state.settings)
 
   const selectedBundle = useMemo(() => {
     if (!state.selectedDate) return null
@@ -26,28 +43,79 @@ export default function App() {
     )
   }, [state.selectedDate, cal.dayMap])
 
-  const monthEventCount = useMemo(() => {
+  const visibleEventCount = useMemo(() => {
+    if (state.settings.viewMode === 'week') {
+      const days = Array.from({ length: 7 }, (_, i) =>
+        addDaysToLocalDate(state.weekStart, i),
+      )
+      return cal.events.filter((e) => days.includes(e.localDate)).length
+    }
     const prefix = `${state.viewYear}-${String(state.viewMonth).padStart(2, '0')}`
     return cal.events.filter((e) => e.localDate.startsWith(prefix)).length
-  }, [cal.events, state.viewYear, state.viewMonth])
+  }, [
+    cal.events,
+    state.viewYear,
+    state.viewMonth,
+    state.weekStart,
+    state.settings.viewMode,
+  ])
+
+  const focusEntity = state.filterEntityId
+    ? state.entities.find((e) => e.id === state.filterEntityId)
+    : null
+
+  function goToday() {
+    const today = todayLocalDate(state.settings.timezone)
+    state.setSelectedDate(today)
+    state.setWeekStart(startOfWeekSunday(today))
+    const [y, m] = today.split('-').map(Number)
+    state.setViewYear(y)
+    state.setViewMonth(m)
+  }
 
   return (
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          <div className="brand-mark">W</div>
+          <BrandMark size={44} className="brand-mark" />
           <div>
             <h1>Watchlist</h1>
-            <p className="muted">Multi-sport calendar · pick of the day</p>
+            <p className="muted brand-sub">
+              Multi-sport calendar · ranked picks
+              {focusEntity
+                ? ` · focus: ${focusEntity.abbreviation || focusEntity.displayName}`
+                : ''}
+              {state.settings.notifications.enabled ? ' · alerts on' : ''}
+            </p>
           </div>
         </div>
         <div className="topbar-actions">
+          <div className="view-toggle" role="group" aria-label="Calendar view">
+            <button
+              type="button"
+              className={state.settings.viewMode === 'month' ? 'active' : ''}
+              onClick={() => state.updateSettings({ viewMode: 'month' })}
+            >
+              Month
+            </button>
+            <button
+              type="button"
+              className={state.settings.viewMode === 'week' ? 'active' : ''}
+              onClick={() => state.updateSettings({ viewMode: 'week' })}
+            >
+              Week
+            </button>
+          </div>
+          <button type="button" className="btn" onClick={goToday}>
+            Today
+          </button>
           <button
             type="button"
             className="btn"
             onClick={() => state.setPanel(state.panel === 'picker' ? 'none' : 'picker')}
           >
-            Teams ({state.entities.length}/10)
+            Teams
+            <span className="btn-count">{state.entities.length}/10</span>
           </button>
           <button
             type="button"
@@ -69,6 +137,21 @@ export default function App() {
         </div>
       </header>
 
+      <TeamFilter
+        entities={state.entities}
+        filterId={state.filterEntityId}
+        onChange={state.setFilterEntityId}
+      />
+
+      {state.entities.length > 0 && !cal.isLoading && (
+        <UpcomingRail
+          events={cal.events}
+          dayMap={cal.dayMap}
+          timezone={state.settings.timezone}
+          onSelectDate={state.setSelectedDate}
+        />
+      )}
+
       <div className="legend">
         {(Object.keys(SPORT_LABELS) as Sport[]).map((s) => (
           <span key={s} className="legend-item">
@@ -76,18 +159,19 @@ export default function App() {
             {SPORT_LABELS[s]}
           </span>
         ))}
-        <span className="legend-item">♛ Pick of day</span>
-        <span className="legend-item">★ Must-see</span>
+        <span className="legend-item legend-meta">♛ Pick of day</span>
+        <span className="legend-item legend-meta">★ Must-see</span>
       </div>
 
       <main className="layout">
         <div className="main-col">
           {state.entities.length === 0 && (
             <div className="empty-state">
+              <BrandMark size={64} className="empty-mark" />
               <h2>Build your watchlist</h2>
               <p>
                 Add up to 10 teams across NFL, NBA, MLB, NHL, soccer, and F1. We’ll
-                merge their schedules and rank every game.
+                merge their schedules, rank every game, and surface what to watch.
               </p>
               <button
                 type="button"
@@ -101,6 +185,7 @@ export default function App() {
 
           {state.entities.length > 0 && cal.isLoading && (
             <div className="empty-state">
+              <div className="loader" />
               <p>Loading schedules…</p>
             </div>
           )}
@@ -112,14 +197,15 @@ export default function App() {
             </div>
           )}
 
-          {state.entities.length > 0 && !cal.isLoading && monthEventCount === 0 && (
+          {state.entities.length > 0 && !cal.isLoading && visibleEventCount === 0 && (
             <div className="banner">
-              No known fixtures this month for your teams — try another month or
-              refresh after schedules drop.
+              {focusEntity
+                ? `No known fixtures in this ${state.settings.viewMode} for ${focusEntity.displayName}. Try another range or clear focus.`
+                : `No known fixtures in this ${state.settings.viewMode} — try another range or refresh after schedules drop.`}
             </div>
           )}
 
-          {state.entities.length > 0 && (
+          {state.entities.length > 0 && state.settings.viewMode === 'month' && (
             <MonthGrid
               year={state.viewYear}
               month={state.viewMonth}
@@ -134,9 +220,19 @@ export default function App() {
             />
           )}
 
+          {state.entities.length > 0 && state.settings.viewMode === 'week' && (
+            <WeekView
+              weekStart={state.weekStart}
+              timezone={state.settings.timezone}
+              dayMap={cal.dayMap}
+              selectedDate={state.selectedDate}
+              onSelectDate={state.setSelectedDate}
+              onChangeWeek={state.setWeekStart}
+            />
+          )}
+
           <footer className="footer muted tiny">
-            Local-first · data from ESPN unofficial API + Jolpica-F1 · times in{' '}
-            {state.settings.timezone}
+            Local-first · ESPN + Jolpica-F1 · {state.settings.timezone}
             {cal.dataUpdatedAt
               ? ` · updated ${new Date(cal.dataUpdatedAt).toLocaleString()}`
               : ''}
@@ -146,6 +242,7 @@ export default function App() {
         <DayPanel
           bundle={selectedBundle}
           timezone={state.settings.timezone}
+          settings={state.settings}
           onClose={() => state.setSelectedDate(null)}
         />
       </main>
